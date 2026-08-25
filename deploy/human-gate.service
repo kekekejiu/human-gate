@@ -1,0 +1,18 @@
+[Unit]
+Description=Human Gate - local behavior captcha service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/www/wwwroot/human-gate
+ExecStart=/www/wwwroot/human-gate/human-gate
+Environment=GATE_LISTEN=127.0.0.1:9200
+Environment=GATE_COOKIE=hg_pass
+Environment=GATE_SECRET_FILE=/www/wwwroot/human-gate/secret.key
+Environment=GATE_PASS_TTL_HOURS=12
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

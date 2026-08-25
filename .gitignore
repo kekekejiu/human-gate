@@ -1,0 +1,11 @@
+# 敏感：HMAC 签名密钥，泄露将导致通行 Cookie 可被伪造，绝不能提交
+secret.key
+
+# 编译产物
+/human-gate
+*.exe
+
+# 依赖与临时
+/vendor/
+*.log
+.DS_Store
