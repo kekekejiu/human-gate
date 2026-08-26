@@ -12,6 +12,9 @@ location = /__gate/check {
     proxy_pass_request_body off;
     proxy_set_header Content-Length "";
     proxy_set_header X-Original-URI $request_uri;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header User-Agent $http_user_agent;
     proxy_set_header Cookie $http_cookie;
 }

@@ -9,3 +9,9 @@ secret.key
 /vendor/
 *.log
 .DS_Store
+
+# 访客分析数据与 IP 库(体积大/含隐私，不入库)
+*.db
+*.db-shm
+*.db-wal
+*.mmdb

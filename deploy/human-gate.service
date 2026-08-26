@@ -10,6 +10,13 @@ Environment=GATE_LISTEN=127.0.0.1:9200
 Environment=GATE_COOKIE=hg_pass
 Environment=GATE_SECRET_FILE=/www/wwwroot/human-gate/secret.key
 Environment=GATE_PASS_TTL_HOURS=12
+# ===== 访客分析(填了库路径与管理密码即启用) =====
+Environment=GATE_GEO_CITY=/www/wwwroot/human-gate-data/GeoLite2-City.mmdb
+Environment=GATE_GEO_ASN=/www/wwwroot/human-gate-data/GeoLite2-ASN.mmdb
+Environment=GATE_DB=/www/wwwroot/human-gate-data/visits.db
+Environment=GATE_RETAIN_DAYS=30
+Environment=GATE_ADMIN_USER=admin
+Environment=GATE_ADMIN_PASS=CHANGE_ME_请改成强密码
 Restart=always
 RestartSec=3
 LimitNOFILE=65535

@@ -71,6 +71,24 @@ server {
 | `GATE_COOKIE` | `hg_pass` | 通行 Cookie 名 |
 | `GATE_SECRET_FILE` | `./secret.key` | HMAC 密钥文件路径 |
 | `GATE_PASS_TTL_HOURS` | `12` | 通行有效期（小时） |
+| `GATE_GEO_CITY` | 空 | GeoLite2-City.mmdb 路径（填了才启用分析） |
+| `GATE_GEO_ASN` | 空 | GeoLite2-ASN.mmdb 路径（填了才启用分析） |
+| `GATE_ADMIN_PASS` | 空 | 分析面板密码（填了才启用分析） |
+| `GATE_ADMIN_USER` | `admin` | 分析面板用户名 |
+| `GATE_DB` | `./visits.db` | SQLite 数据库路径 |
+| `GATE_RETAIN_DAYS` | `30` | 访问记录保留天数（自动清理） |
+
+## 访客分析（可选）
+
+同时配置 `GATE_GEO_CITY`、`GATE_GEO_ASN`、`GATE_ADMIN_PASS` 后，闸门会记录每一次经过的访客并做 IP 画像：
+
+- **采集**：IP、UA、站点、路径、是否已通过、时间
+- **IP 画像**：国家/省/市、ASN、运营商（电信/联通/移动）、IP 类型（IDC 机房 / 运营商宽带）
+- **风险标记**（只标记不封）：爬虫 UA、空 UA、机房 IP、高频访问 → `ok` / `suspect` / `danger`
+- **面板**：访问 `/__gate/admin`（用户名/密码登录），含统计卡片、运营商/类型/地区分布、高频 IP 排行、最近访问明细，支持按风险等级过滤
+- **JSON 接口**：`/__gate/admin/api/{summary,recent,top_ip,by_isp,by_type,by_country}`
+
+GeoLite2 库可从 MaxMind 官方或公开镜像获取（`GeoLite2-City.mmdb` + `GeoLite2-ASN.mmdb`），放到 `GATE_DB` 同目录即可。**数据库与 mmdb 库不入 git**（已在 `.gitignore` 排除）。
 
 ## 重要：安全须知
 
