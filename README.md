@@ -77,6 +77,12 @@ server {
 | `GATE_ADMIN_USER` | `admin` | 分析面板用户名 |
 | `GATE_DB` | `./visits.db` | SQLite 数据库路径 |
 | `GATE_RETAIN_DAYS` | `30` | 访问记录保留天数（自动清理） |
+| `GATE_IP2REGION_V4` | 空 | ip2region_v4.xdb 路径（国内地市级+运营商兜底，可选） |
+| `GATE_IP2REGION_V6` | 空 | ip2region_v6.xdb 路径（同上，可选） |
+| `GATE_INGEST_TOKEN` | 空 | 中心侧：接收远程节点上报的密钥（填了才开放 ingest） |
+| `GATE_REPORT_URL` | 空 | 节点侧：中心 ingest 地址，如 `https://中心IP:9443/__gate/ingest` |
+| `GATE_REPORT_TOKEN` | 空 | 节点侧：与中心 `GATE_INGEST_TOKEN` 一致 |
+| `GATE_REPORT_INSECURE` | 空 | 节点侧：中心用自签证书时置 `1` 跳过证书校验 |
 
 ## 访客分析（可选）
 
@@ -103,6 +109,21 @@ GeoLite2 库可从 MaxMind 官方或公开镜像获取（`GeoLite2-City.mmdb` + 
 
 - `X-Forwarded-For` 可伪造。**若源站 IP 对外暴露、可被直连，切勿用 `set_real_ip_from 0.0.0.0/0`**，否则任何人都能伪造访客 IP。只信任已知反代 IP，名单外直连来源不被采信、其真实来源会被如实记录（扫描器因此会暴露自身 IP，正好被风控标记）。
 - 放置位置：`set_real_ip_from`/`real_ip_header` 在同一 server 只能出现一次。**不要**把这些 `.conf` 放进会被 `include .../nginx/*.conf` 通配符扫到的目录，否则会报 `real_ip_header directive is duplicate`；建议放到 `realip/` 子目录再显式 include。
+
+## 多服务器接入（分布式 + 中心汇总）
+
+其他业务、部署在**其他服务器**的站点也能接入同一套分析面板。采用「每台本地闸门 + 事件上报中心」的架构：
+
+- **中心节点**（跑 GeoLite2/ip2region/SQLite/面板）：配置 `GATE_INGEST_TOKEN` 开放 `/__gate/ingest`，并通过 nginx 用 HTTPS 把该端点暴露给其他服务器（示例见 [`deploy/nginx-ingest-endpoint.conf.example`](deploy/nginx-ingest-endpoint.conf.example)，记得放行对应端口）。
+- **远程节点**（部署在其他服务器）：只需同一个二进制，配置 `GATE_REPORT_URL` + `GATE_REPORT_TOKEN` 即可。节点本地做闸门（低延迟、无单点），把原始事件异步批量上报中心，**不需要** geo 库和数据库。示例见 [`deploy/human-gate-node.service.example`](deploy/human-gate-node.service.example)。
+
+要点：
+
+- **画像在中心统一做**：节点只上报 IP/UA/站点/路径/是否通过；地理与运营商画像、风险打分、入库都在中心，面板按站点（`site`）区分各业务。
+- **真实 IP 在节点侧还原**：每个节点的 nginx 按前置情况 include `realip-*.conf`，还原后的真实 IP 随事件上报，中心直接信任。
+- **上报是尽力而为**：缓冲满或网络失败直接丢弃，绝不阻塞闸门；单站/网络故障不影响放行与其他站点。
+- **共享 Cookie（可选）**：若希望多站点互认通行证，各节点使用**同一份 `secret.key`**；否则各站独立验证。
+- **安全**：`GATE_INGEST_TOKEN` 用强随机值、走 HTTPS；ingest 入口只暴露 `/__gate/ingest`，其余路径 `return 444`。
 
 ## 重要：安全须知
 

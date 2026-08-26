@@ -25,6 +25,10 @@ var (
 	adminUser  string
 	adminPass  string
 	analyticsOn bool
+
+	// 分布式：远程上报器(远程节点侧) / ingest 密钥(中心侧)
+	rpt         *reporter
+	ingestToken string
 )
 
 func main() {
@@ -45,6 +49,7 @@ func main() {
 	}
 
 	initAnalytics()
+	initDistributed()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__gate/check", handleCheck)     // nginx auth_request 内部调用
@@ -57,6 +62,11 @@ func main() {
 		mux.HandleFunc("/__gate/admin/login", handleAdminLogin)
 		mux.HandleFunc("/__gate/admin/api/", handleAdminAPI)
 		mux.HandleFunc("/__gate/admin", handleAdminPage)
+	}
+	// 中心侧：接收远程节点上报(需 analytics 开启 + 配置 ingest 密钥)
+	if analyticsOn && ingestToken != "" {
+		mux.HandleFunc("/__gate/ingest", handleIngest)
+		log.Printf("ingest endpoint enabled")
 	}
 	mux.HandleFunc("/__gate/", handleGateStatic) // 闸门页面(兜底，须放最后)
 
@@ -87,6 +97,13 @@ func initAnalytics() {
 		log.Printf("geo init failed, analytics disabled: %v", err)
 		return
 	}
+	// ip2region 国内库(可选)：补齐移动等运营商的地市级归属
+	region4 := os.Getenv("GATE_IP2REGION_V4")
+	region6 := os.Getenv("GATE_IP2REGION_V6")
+	if region4 != "" || region6 != "" {
+		geo.loadIP2Region(region4, region6)
+		log.Printf("ip2region loaded: v4=%v v6=%v", geo.region4 != nil, geo.region6 != nil)
+	}
 	retain := 30
 	if v := os.Getenv("GATE_RETAIN_DAYS"); v != "" {
 		if d, e := strconv.Atoi(v); e == nil && d > 0 {
@@ -105,6 +122,20 @@ func initAnalytics() {
 	log.Printf("analytics enabled: db=%s retain=%dd", dbPath, retain)
 }
 
+// initDistributed 初始化分布式相关配置
+//   - GATE_REPORT_URL + GATE_REPORT_TOKEN：远程节点模式，把事件上报到中心
+//   - GATE_INGEST_TOKEN：中心模式，接收远程节点上报(需 analytics 开启)
+func initDistributed() {
+	reportURL := os.Getenv("GATE_REPORT_URL")
+	reportToken := os.Getenv("GATE_REPORT_TOKEN")
+	if reportURL != "" && reportToken != "" {
+		insecure := os.Getenv("GATE_REPORT_INSECURE") == "1"
+		rpt = newReporter(reportURL, reportToken, insecure)
+		log.Printf("remote report enabled -> %s (insecure=%v)", reportURL, insecure)
+	}
+	ingestToken = os.Getenv("GATE_INGEST_TOKEN")
+}
+
 // clientIP 从 nginx 透传的头里取真实访客 IP
 func clientIP(r *http.Request) string {
 	if v := r.Header.Get("X-Real-IP"); v != "" {
@@ -121,9 +152,11 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-// recordVisit 异步采集一次访问(仅在分析开启时)
+// recordVisit 采集一次本地访问。
+// - 中心/单机模式(store 就绪)：本地画像并入库
+// - 远程节点模式(reporter 就绪)：把原始事件上报给中心，本地不画像
 func recordVisit(r *http.Request, passed int) {
-	if !analyticsOn {
+	if !analyticsOn && rpt == nil {
 		return
 	}
 	ip := clientIP(r)
@@ -133,18 +166,29 @@ func recordVisit(r *http.Request, passed int) {
 		site = r.Header.Get("Host")
 	}
 	uri := r.Header.Get("X-Original-URI")
+	e := rawEvent{TS: time.Now().Unix(), IP: ip, UA: ua, Site: site, URI: uri, Passed: passed}
 
-	go func() {
-		p := geo.Lookup(ip)
-		n := freq.hit(ip)
-		level, tags := assessRisk(ua, p, n)
-		store.insert(visitRow{
-			TS: time.Now().Unix(), IP: ip, UA: ua, Site: site, URI: uri, Passed: passed,
-			Country: p.Country, Province: p.Province, City: p.City,
-			ASN: p.ASN, ASNOrg: p.ASNOrg, IPType: p.IPType, ISP: p.ISP,
-			RiskLevel: level, RiskTags: strings.Join(tags, ","),
-		})
-	}()
+	if rpt != nil {
+		rpt.send(e)
+		return
+	}
+	go processEvent(e)
+}
+
+// processEvent 对一条原始事件做画像+风控打分并入库(中心/单机侧执行)
+func processEvent(e rawEvent) {
+	if !analyticsOn {
+		return
+	}
+	p := geo.Lookup(e.IP)
+	n := freq.hit(e.IP)
+	level, tags := assessRisk(e.UA, p, n)
+	store.insert(visitRow{
+		TS: e.TS, IP: e.IP, UA: e.UA, Site: e.Site, URI: e.URI, Passed: e.Passed,
+		Country: p.Country, Province: p.Province, City: p.City,
+		ASN: p.ASN, ASNOrg: p.ASNOrg, IPType: p.IPType, ISP: p.ISP,
+		RiskLevel: level, RiskTags: strings.Join(tags, ","),
+	})
 }
 
 // handleCheck 由 nginx auth_request 调用：有合法 Cookie 返回 204，否则 401

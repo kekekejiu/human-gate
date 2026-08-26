@@ -1,0 +1,30 @@
+# 远程节点 systemd 示例（部署在“其他服务器”上的 human-gate）
+# 该节点只做本地闸门 + 把访客事件上报中心，不需要 GeoLite2 / ip2region / SQLite。
+[Unit]
+Description=Human Gate Node - local gate + report to center
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/www/wwwroot/human-gate
+ExecStart=/www/wwwroot/human-gate/human-gate
+Environment=GATE_LISTEN=127.0.0.1:9200
+Environment=GATE_COOKIE=hg_pass
+# 多节点共享同一 secret.key，才能互认通行 Cookie（从中心复制过来）
+Environment=GATE_SECRET_FILE=/www/wwwroot/human-gate/secret.key
+Environment=GATE_PASS_TTL_HOURS=12
+
+# ===== 上报到中心 =====
+# 中心 ingest 公网入口（本例用源站 IP + 自签/自有证书的 9443 端口）
+Environment=GATE_REPORT_URL=https://中心服务器IP:9443/__gate/ingest
+# 与中心 GATE_INGEST_TOKEN 一致
+Environment=GATE_REPORT_TOKEN=改成与中心一致的强密钥
+# 中心用自签证书时置 1，跳过证书校验（防伪造仍由 token 保证）
+Environment=GATE_REPORT_INSECURE=1
+
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

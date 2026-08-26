@@ -3,6 +3,7 @@ module human-gate
 go 1.26.3
 
 require (
+	github.com/lionsoul2014/ip2region/binding/golang v0.0.0-20260814054437-800d19424237
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/wenlng/go-captcha-assets v1.0.7
 	github.com/wenlng/go-captcha/v2 v2.0.5

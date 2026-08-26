@@ -4,6 +4,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/lionsoul2014/ip2region/binding/golang/xdb"
 	"github.com/oschwald/geoip2-golang"
 )
 
@@ -21,6 +22,9 @@ type IPProfile struct {
 type geoResolver struct {
 	city *geoip2.Reader
 	asn  *geoip2.Reader
+	// ip2region：国内地市级 + 运营商兜底(可选，加载失败则为 nil)
+	region4 *xdb.Searcher
+	region6 *xdb.Searcher
 }
 
 func newGeoResolver(cityPath, asnPath string) (*geoResolver, error) {
@@ -36,12 +40,37 @@ func newGeoResolver(cityPath, asnPath string) (*geoResolver, error) {
 	return &geoResolver{city: c, asn: a}, nil
 }
 
+// loadIP2Region 加载国内 IP 库(v4/v6)，用于地市级与运营商兜底。
+// 任一失败都不影响主流程，仅记录为空。
+func (g *geoResolver) loadIP2Region(v4Path, v6Path string) {
+	if v4Path != "" {
+		if buf, err := xdb.LoadContentFromFile(v4Path); err == nil {
+			if s, err := xdb.NewWithBuffer(xdb.IPv4, buf); err == nil {
+				g.region4 = s
+			}
+		}
+	}
+	if v6Path != "" {
+		if buf, err := xdb.LoadContentFromFile(v6Path); err == nil {
+			if s, err := xdb.NewWithBuffer(xdb.IPv6, buf); err == nil {
+				g.region6 = s
+			}
+		}
+	}
+}
+
 func (g *geoResolver) Close() {
 	if g.city != nil {
 		g.city.Close()
 	}
 	if g.asn != nil {
 		g.asn.Close()
+	}
+	if g.region4 != nil {
+		g.region4.Close()
+	}
+	if g.region6 != nil {
+		g.region6.Close()
 	}
 }
 
@@ -68,7 +97,77 @@ func (g *geoResolver) Lookup(ipStr string) IPProfile {
 
 	p.ISP = classifyISP(p.ASNOrg, p.ASN, p.Country)
 	p.IPType = classifyIPType(p.ASNOrg, p.ISP)
+
+	// 国内 IP 用 ip2region 补齐地市级与运营商(GeoLite2 免费库对移动省市常缺失)
+	g.enrichWithRegion(ip, &p)
 	return p
+}
+
+// enrichWithRegion 用 ip2region 覆盖国内 IP 的省/市/运营商。
+// 格式：国家|区域|省份|城市|ISP，如 "中国|北京市|北京市|移动|CN"。
+func (g *geoResolver) enrichWithRegion(ip net.IP, p *IPProfile) {
+	var s *xdb.Searcher
+	if ip.To4() != nil {
+		s = g.region4
+	} else {
+		s = g.region6
+	}
+	if s == nil {
+		return
+	}
+	raw, err := s.Search(ip.String())
+	if err != nil || raw == "" {
+		return
+	}
+	f := strings.Split(raw, "|")
+	if len(f) < 5 {
+		return
+	}
+	country, province, city, isp := f[0], f[1], f[2], f[3]
+	// 仅对中国大陆 IP 采用 ip2region 结果(境外仍以 GeoLite2 为准)
+	if country != "中国" {
+		return
+	}
+	if p.Country == "" {
+		p.Country = "CN"
+	}
+	if v := cleanRegion(province); v != "" {
+		p.Province = v
+	}
+	if v := cleanRegion(city); v != "" {
+		p.City = v
+	}
+	if mapped := mapRegionISP(isp); mapped != "" {
+		p.ISP = mapped
+		if p.IPType == "unknown" {
+			p.IPType = "carrier"
+		}
+	}
+}
+
+// cleanRegion 过滤 ip2region 的占位符("0"/空)
+func cleanRegion(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "0" {
+		return ""
+	}
+	return v
+}
+
+// mapRegionISP 把 ip2region 的 ISP 字段映射到统一口径
+func mapRegionISP(isp string) string {
+	switch {
+	case strings.Contains(isp, "移动") || strings.Contains(isp, "铁通"):
+		return "移动"
+	case strings.Contains(isp, "联通") || strings.Contains(isp, "网通"):
+		return "联通"
+	case strings.Contains(isp, "电信"):
+		return "电信"
+	case strings.Contains(isp, "教育"):
+		return "教育网"
+	default:
+		return ""
+	}
 }
 
 func firstNonEmpty(vals ...string) string {
