@@ -66,7 +66,7 @@ func (g *geoResolver) Lookup(ipStr string) IPProfile {
 		p.ASNOrg = a.AutonomousSystemOrganization
 	}
 
-	p.ISP = classifyISP(p.ASNOrg)
+	p.ISP = classifyISP(p.ASNOrg, p.ASN, p.Country)
 	p.IPType = classifyIPType(p.ASNOrg, p.ISP)
 	return p
 }
@@ -80,9 +80,26 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// classifyISP 依据 ASN 组织名判断运营商
-func classifyISP(org string) string {
+// 三大运营商已知 ASN(含省级子公司)。ASN 命中最可靠，作为首选判据。
+var (
+	telecomASN = map[uint]bool{4134: true, 4809: true, 4811: true, 4812: true, 4813: true, 23724: true, 24138: true, 63838: true, 131285: true, 131325: true, 132118: true, 137687: true, 137689: true, 137693: true, 137694: true, 138948: true, 139018: true, 140330: true, 140726: true}
+	unicomASN  = map[uint]bool{4837: true, 9929: true, 10099: true, 17621: true, 17622: true, 17816: true, 17964: true, 131486: true, 132633: true, 136958: true, 137688: true, 137692: true, 137695: true, 138421: true, 139007: true}
+	mobileASN  = map[uint]bool{9808: true, 24400: true, 24444: true, 24445: true, 24547: true, 56040: true, 56041: true, 56042: true, 56044: true, 56046: true, 56047: true, 56048: true, 132510: true, 132525: true, 137872: true, 137876: true, 141425: true, 9231: true, 58453: true, 38019: true}
+)
+
+// classifyISP 依据 ASN 号 + 组织名判断运营商。
+// 优先用 ASN 号(最准，覆盖省级子公司)，再用组织名关键词兜底。
+func classifyISP(org string, asn uint, country string) string {
+	switch {
+	case telecomASN[asn]:
+		return "电信"
+	case mobileASN[asn]:
+		return "移动"
+	case unicomASN[asn]:
+		return "联通"
+	}
 	o := strings.ToLower(org)
+	isCN := country == "" || country == "CN"
 	switch {
 	case strings.Contains(o, "chinanet") || strings.Contains(o, "china telecom") || strings.Contains(o, "telecom"):
 		return "电信"
@@ -90,7 +107,10 @@ func classifyISP(org string) string {
 		return "联通"
 	case strings.Contains(o, "china mobile") || strings.Contains(o, "cmnet") || strings.Contains(o, "tietong"):
 		return "移动"
-	case strings.Contains(o, "cernet") || strings.Contains(o, "education"):
+	// 省级子公司常见格式："Shandong Mobile"、"Zhejiang Telecom"，仅在国内 IP 下宽松匹配
+	case isCN && strings.Contains(o, "mobile"):
+		return "移动"
+	case isCN && strings.Contains(o, "cernet") || strings.Contains(o, "education"):
 		return "教育网"
 	default:
 		return "其他"

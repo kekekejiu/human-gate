@@ -90,6 +90,20 @@ server {
 
 GeoLite2 库可从 MaxMind 官方或公开镜像获取（`GeoLite2-City.mmdb` + `GeoLite2-ASN.mmdb`），放到 `GATE_DB` 同目录即可。**数据库与 mmdb 库不入 git**（已在 `.gitignore` 排除）。
 
+> 运营商识别同时使用 **ASN 号 + 组织名关键词** 双重判据，覆盖 `Shandong Mobile`、`Zhejiang Telecom` 这类省级子公司命名，IPv4/IPv6 均可正确归类到电信/联通/移动。
+
+## 真实客户端 IP 还原（前置反代/CDN 必看）
+
+如果站点前面有 Cloudflare 或自建反代，源站 nginx 看到的 `$remote_addr` 是 **CF/反代节点的 IP**，分析系统会把所有真实用户都记成那几个反代 IP。需在站点 `server{}` 内还原真实 IP：
+
+- **Cloudflare 前置**：include [`deploy/realip-cloudflare.conf`](deploy/realip-cloudflare.conf)，采信 `CF-Connecting-IP`。
+- **自建反代前置**（转发时带 `X-Forwarded-For`）：include [`deploy/realip-proxy.conf`](deploy/realip-proxy.conf)，把**你自己的反代节点 IP**填入 `set_real_ip_from` 白名单。
+
+安全要点：
+
+- `X-Forwarded-For` 可伪造。**若源站 IP 对外暴露、可被直连，切勿用 `set_real_ip_from 0.0.0.0/0`**，否则任何人都能伪造访客 IP。只信任已知反代 IP，名单外直连来源不被采信、其真实来源会被如实记录（扫描器因此会暴露自身 IP，正好被风控标记）。
+- 放置位置：`set_real_ip_from`/`real_ip_header` 在同一 server 只能出现一次。**不要**把这些 `.conf` 放进会被 `include .../nginx/*.conf` 通配符扫到的目录，否则会报 `real_ip_header directive is duplicate`；建议放到 `realip/` 子目录再显式 include。
+
 ## 重要：安全须知
 
 - **绝不能拦 API / 支付回调 / webhook**。只给"给人看的 HTML 页面"那个 `location` 加 `auth_request`；未加的 `location` 自动放行。
