@@ -77,6 +77,7 @@ server {
 - **绝不能拦 API / 支付回调 / webhook**。只给"给人看的 HTML 页面"那个 `location` 加 `auth_request`；未加的 `location` 自动放行。
 - **`secret.key` 是机密**，已在 `.gitignore` 中排除，切勿提交或泄露。多台机器共享 Cookie 时需使用同一份密钥。
 - **务必放行 `.well-known/acme-challenge/`**，否则 SSL 证书续期会失败。
+- **前置反代场景务必保留 `absolute_redirect off`**（片段中已内置）。否则 nginx 会把闸门的 `302 /__gate/...` 相对跳转补全成**源站绝对地址**，导致访客从前置反代被弹到源站、暴露源站 IP。保持相对跳转，浏览器才会停留在当前访问的反代地址上。
 
 ## License
 

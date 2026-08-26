@@ -30,5 +30,7 @@ location /__gate/ {
 # 未通过验证(auth_request 返回 401)时跳转到闸门页，并带上原始地址
 error_page 401 = @gate_redirect;
 location @gate_redirect {
+    # 关键：保持相对跳转，不让 nginx 补全成源站绝对地址(否则前置反代会被击穿、暴露源站IP)
+    absolute_redirect off;
     return 302 /__gate/?next=$request_uri;
 }
