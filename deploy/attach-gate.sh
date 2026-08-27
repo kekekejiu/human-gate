@@ -157,17 +157,36 @@ cmd_apply() {
   fi
   [ "${#confs[@]}" -eq 0 ] && { echo "没有可接入的站点"; exit 1; }
 
+  # 预检：nginx 必须带 http_auth_request_module，否则 auth_request 指令无法使用
+  if [ "$DRYRUN" != 1 ] && ! "$NGINX_BIN" -V 2>&1 | grep -q 'http_auth_request_module'; then
+    echo "!! 本机 nginx 未编译 http_auth_request_module，无法使用 auth_request。"
+    echo "   该节点的闸门需改用其它方式（如在上游应用或另一层带该模块的 nginx 上接入）。"
+    echo "   已中止，未做任何修改。"
+    exit 2
+  fi
+
   for c in "${confs[@]}"; do attach_one "$c" || true; done
 
   if [ "$DRYRUN" = 1 ]; then echo "== DRYRUN 结束，未写盘 =="; return 0; fi
   echo "== 校验 nginx 配置 =="
-  if "$NGINX_BIN" -t 2>&1 | tail -2; then
-    if "$NGINX_BIN" -t >/dev/null 2>&1; then
-      "$NGINX_BIN" -s reload && echo "== ✓ 已重载，接入完成 =="
-      echo "备份后缀: .gatebak.$STAMP （确认无误后可删）"
+  # 注意：不要用 `if nginx -t | tail` —— pipefail 下管道返回码会取 nginx 的非零，
+  # 导致校验失败时反而跳过回滚。这里单独取 nginx -t 的退出码。
+  local tout
+  tout="$("$NGINX_BIN" -t 2>&1)"; local trc=$?
+  echo "$tout" | tail -2
+  if [ "$trc" -eq 0 ]; then
+    "$NGINX_BIN" -s reload && echo "== ✓ 已重载，接入完成 =="
+    echo "备份后缀: .gatebak.$STAMP （确认无误后可删）"
+  else
+    echo "== ✗ 配置校验失败，自动回滚 =="
+    rollback
+    local rout; rout="$("$NGINX_BIN" -t 2>&1)"; local rrc=$?
+    if [ "$rrc" -eq 0 ]; then
+      echo "== ✓ 已回滚到接入前状态（nginx 配置校验通过）=="
     else
-      echo "== ✗ 配置校验失败，回滚 =="; rollback; "$NGINX_BIN" -t 2>&1 | tail -2; exit 1
+      echo "== !! 回滚后仍校验失败，请人工检查："; echo "$rout" | tail -3
     fi
+    exit 1
   fi
 }
 
