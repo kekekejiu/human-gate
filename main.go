@@ -50,6 +50,7 @@ func main() {
 
 	initAnalytics()
 	initDistributed()
+	initProxyMode()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__gate/check", handleCheck)     // nginx auth_request 内部调用
@@ -69,6 +70,11 @@ func main() {
 		log.Printf("ingest endpoint enabled")
 	}
 	mux.HandleFunc("/__gate/", handleGateStatic) // 闸门页面(兜底，须放最后)
+
+	// 反代模式：非 /__gate/ 的一切走验证+反代到上游
+	if proxyModeEnabled() {
+		mux.HandleFunc("/", handleProxyRoot)
+	}
 
 	log.Printf("human-gate listening on %s", listen)
 	srv := &http.Server{
