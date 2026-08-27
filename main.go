@@ -29,6 +29,9 @@ var (
 	// 分布式：远程上报器(远程节点侧) / ingest 密钥(中心侧)
 	rpt         *reporter
 	ingestToken string
+
+	// 闸门总开关：off 时全站放行(仍可上报分析)，用于纯反代 API 等场景
+	gateEnabled = true
 )
 
 func main() {
@@ -40,6 +43,12 @@ func main() {
 		if h, err := strconv.Atoi(v); err == nil && h > 0 {
 			passTTL = time.Duration(h) * time.Hour
 		}
+	}
+
+	// 闸门总开关：GATE_ENABLE=off 关闭滑块验证(全站放行)，仍继续采集/上报访客数据
+	if strings.EqualFold(os.Getenv("GATE_ENABLE"), "off") {
+		gateEnabled = false
+		log.Printf("gate DISABLED (GATE_ENABLE=off): 放行全部请求，仅采集数据")
 	}
 
 	var err error
@@ -239,7 +248,8 @@ func handleCheck(w http.ResponseWriter, r *http.Request) {
 		passed = 1
 	}
 	recordVisit(r, passed)
-	if passed == 1 {
+	// 闸门关闭时全站放行(仍已记录访问)
+	if !gateEnabled || passed == 1 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

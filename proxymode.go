@@ -74,7 +74,8 @@ func handleProxyRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	recordVisit(r, boolToInt(passed))
-	if passed {
+	// 闸门关闭时全站放行(仍已记录访问)
+	if !gateEnabled || passed {
 		reverseProxy.ServeHTTP(w, r)
 		return
 	}
