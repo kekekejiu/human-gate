@@ -16,3 +16,4 @@ secret.key
 *.db-wal
 *.mmdb
 *.xdb
+human-gate.bak.*

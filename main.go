@@ -175,9 +175,42 @@ func recordVisit(r *http.Request, passed int) {
 	go processEvent(e)
 }
 
+// staticAssetExts 是页面加载时由浏览器自动并发拉取的子资源后缀。
+// 这类请求一次页面访问会产生几十条，记录下来只会淹没真实的页面级访问日志。
+var staticAssetExts = map[string]bool{
+	".js": true, ".mjs": true, ".css": true, ".map": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
+	".svg": true, ".ico": true, ".bmp": true, ".avif": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".eot": true, ".otf": true,
+	".mp4": true, ".webm": true, ".mp3": true, ".wav": true,
+}
+
+// isStaticAsset 判断 URI 是否为静态子资源(按扩展名 + 常见附属文件)。
+// 命中则不计入访客分析，使"一次进站"回归页面级 1~2 条记录。
+func isStaticAsset(uri string) bool {
+	path := uri
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	switch path {
+	case "/favicon.ico", "/manifest.json", "/robots.txt", "/sw.js", "/service-worker.js":
+		return true
+	}
+	if dot := strings.LastIndex(path, "."); dot >= 0 {
+		if slash := strings.LastIndex(path, "/"); dot > slash {
+			return staticAssetExts[strings.ToLower(path[dot:])]
+		}
+	}
+	return false
+}
+
 // processEvent 对一条原始事件做画像+风控打分并入库(中心/单机侧执行)
 func processEvent(e rawEvent) {
 	if !analyticsOn {
+		return
+	}
+	// 静态子资源(JS/CSS/图片/字体等)不入库，避免一次页面加载刷出几十条记录
+	if isStaticAsset(e.URI) {
 		return
 	}
 	p := geo.Lookup(e.IP)
