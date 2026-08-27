@@ -50,7 +50,9 @@ site_confs() {
 }
 
 # 展开主 conf 里 include 的所有文件（含 proxy/*.conf），找含根 location / 的文件
-root_loc_regex='^[[:space:]]*location[[:space:]]+/[[:space:]]*\{'
+# 匹配根 location（路径恰为 /），支持修饰符 ^~ = ~ 及 { 换行：
+#   location / {   |   location ^~ /   |   location = / {
+root_loc_regex='^[[:space:]]*location[[:space:]]+([\^~=*]+[[:space:]]+)?/[[:space:]]*(\{[[:space:]]*)?$'
 find_loc_file() {
   local main="$1"
   grep -qE "$root_loc_regex" "$main" && { echo "$main"; return; }
@@ -90,9 +92,23 @@ inject_auth() {
   grep -qE "$root_loc_regex" "$f" || { echo "  !! $f 未找到根 location /（可能是特殊结构，需手动加）"; return 1; }
   backup "$f"
   [ "$DRYRUN" = 1 ] && { echo "  [dry] $f 在 location / 注入 auth_request"; return 0; }
-  awk -v ins="$AUTH_LINE" -v re="$root_loc_regex" '
-    { print }
-    !done && $0 ~ re { print ins; done=1 }
+  # 找到根 location 行后，在其块的第一个 '{' 之后插入（兼容 { 同行或换行）
+  # 用 awk 原生正则（避免 shell 正则里的 POSIX 类/转义在 awk 中失效）：
+  #   ^location ([~=*^]+ )?/( ?{)?$   —— 归一化空白后的根 location 形态
+  awk -v ins="$AUTH_LINE" '
+    function emit(){ print ins; inserted=1 }
+    {
+      print
+      if (!inserted) {
+        t=$0; gsub(/[ \t]+/," ",t); sub(/^ /,"",t); sub(/ $/,"",t)
+        if (armed) {
+          if ($0 ~ /[{]/) { emit(); armed=0 }
+        } else if (t ~ /^location ([~=*^]+ )?[/]( ?[{])?$/) {
+          armed=1
+          if ($0 ~ /[{]/) { emit(); armed=0 }
+        }
+      }
+    }
   ' "$f" > "$f.gatetmp" && mv "$f.gatetmp" "$f"
   echo "  ✓ $f 已在 location / 注入 auth_request"
 }
