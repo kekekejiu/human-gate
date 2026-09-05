@@ -12,7 +12,7 @@ func TestSupportPageIncludesStaticFallbackAndScript(t *testing.T) {
 	gateSupportScriptURL = "https://plugin.example/chat.js"
 	gateSupportHTML = ""
 	page := renderGatePage()
-	for _, want := range []string{"https://support.example/ticket", "联系客服", "https://plugin.example/chat.js", "HG-VERIFY-01"} {
+	for _, want := range []string{"https://support.example/ticket", "联系客服", `<script src="https://plugin.example/chat.js"></script>`, "HG-VERIFY-01"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("rendered page missing %q", want)
 		}

@@ -68,7 +68,9 @@ func supportEmbedMarkup() string {
 	}
 	out := gateSupportHTML
 	if gateSupportScriptURL != "" {
-		out += `<script src="` + html.EscapeString(gateSupportScriptURL) + `" async></script>`
+		// 严格保持客服平台提供的同步脚本形式。部分加载器依赖 document.currentScript，
+		// 添加 async/defer 会导致二级组件无法找到自身来源而初始化失败。
+		out += `<script src="` + html.EscapeString(gateSupportScriptURL) + `"></script>`
 	}
 	return out
 }

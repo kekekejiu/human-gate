@@ -349,7 +349,7 @@ func handleGateStatic(w http.ResponseWriter, r *http.Request) {
 	if path == "" || path == "/" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https: http:; connect-src 'self' https: http:; frame-src https: http:; font-src 'self' data: https:")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob: https: http:; style-src 'self' 'unsafe-inline' https: http:; script-src 'self' 'unsafe-inline' https: http:; connect-src 'self' https: http: wss: ws:; frame-src https: http:; child-src https: http: blob:; worker-src blob:; media-src https: http: blob:; font-src 'self' data: https: http:")
 		w.Write([]byte(renderGatePage()))
 		return
 	}
