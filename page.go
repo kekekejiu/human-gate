@@ -1,5 +1,12 @@
 package main
 
+import "strings"
+
+func renderGatePage() string {
+	page := strings.ReplaceAll(gatePageHTML, "__SUPPORT_MARKUP__", supportMarkup())
+	return strings.ReplaceAll(page, "__SUPPORT_EMBED__", supportEmbedMarkup())
+}
+
 const gatePageHTML = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -25,6 +32,11 @@ h1{margin:0 0 6px;font-size:19px;color:#1f2937;text-align:center}
 .status{margin-top:12px;min-height:18px;font-size:13px;text-align:center}
 .status.ok{color:#10b981}
 .status.err{color:#ef4444}
+.support{margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 12px;color:#6b7280;font-size:12px;text-align:center}
+.support a{color:#2563eb;text-decoration:none}
+.support-primary{display:inline-block;padding:7px 12px;border-radius:8px;background:#eff6ff;font-weight:600}
+.support-note{width:100%;color:#374151}
+.support small{display:block;width:100%;color:#9ca3af;line-height:1.5}
 </style>
 </head>
 <body>
@@ -42,6 +54,7 @@ h1{margin:0 0 6px;font-size:19px;color:#1f2937;text-align:center}
     <span class="track-tip" id="tip">向右拖动滑块</span>
   </div>
   <div class="status" id="status"></div>
+  __SUPPORT_MARKUP__
 </div>
 <script>
 (function(){
@@ -128,5 +141,6 @@ window.addEventListener('touchend',end);
 load();
 })();
 </script>
+__SUPPORT_EMBED__
 </body>
 </html>`

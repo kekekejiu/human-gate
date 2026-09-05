@@ -71,6 +71,12 @@ server {
 | `GATE_COOKIE` | `hg_pass` | 通行 Cookie 名 |
 | `GATE_SECRET_FILE` | `./secret.key` | HMAC 密钥文件路径 |
 | `GATE_PASS_TTL_HOURS` | `12` | 通行有效期（小时） |
+| `GATE_SUPPORT_ENABLE` | 自动 | 是否显示客服；配置任一客服项后自动启用，设 `off` 强制关闭 |
+| `GATE_SUPPORT_SCRIPT_URL` | 空 | 外链客服脚本地址，如 SaleSmartly 提供的 JS URL |
+| `GATE_SUPPORT_URL` | 空 | 不依赖 JavaScript 的静态客服/工单链接（强烈建议配置） |
+| `GATE_SUPPORT_TEXT` | `验证遇到问题？联系客服` | 静态客服入口文字 |
+| `GATE_SUPPORT_HTML_B64` | 空 | 任意可信客服底部 HTML 的 Base64（部署者自行提供） |
+| `GATE_SUPPORT_HTML_FILE` | 空 | 任意可信客服 HTML 文件路径，如 `/data/support.html` |
 | `GATE_GEO_CITY` | 空 | GeoLite2-City.mmdb 路径（填了才启用分析） |
 | `GATE_GEO_ASN` | 空 | GeoLite2-ASN.mmdb 路径（填了才启用分析） |
 | `GATE_ADMIN_PASS` | 空 | 分析面板密码（填了才启用分析） |

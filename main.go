@@ -32,6 +32,13 @@ var (
 
 	// 闸门总开关：off 时全站放行(仍可上报分析)，用于纯反代 API 等场景
 	gateEnabled = true
+
+	// 验证页客服：静态入口始终可见，第三方客服脚本为可选增强
+	gateSupportEnabled   bool
+	gateSupportURL       string
+	gateSupportText      string
+	gateSupportScriptURL string
+	gateSupportHTML      string
 )
 
 func main() {
@@ -50,6 +57,7 @@ func main() {
 		gateEnabled = false
 		log.Printf("gate DISABLED (GATE_ENABLE=off): 放行全部请求，仅采集数据")
 	}
+	initSupport()
 
 	var err error
 	capt, err = newCaptchaManager(3 * time.Minute)
@@ -341,7 +349,8 @@ func handleGateStatic(w http.ResponseWriter, r *http.Request) {
 	if path == "" || path == "/" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Write([]byte(gatePageHTML))
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https: http:; connect-src 'self' https: http:; frame-src https: http:; font-src 'self' data: https:")
+		w.Write([]byte(renderGatePage()))
 		return
 	}
 	http.NotFound(w, r)
