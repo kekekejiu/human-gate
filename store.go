@@ -45,6 +45,10 @@ func newVisitStore(path string, retainDays int) (*visitStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := s.initPolicy(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	go s.gcLoop()
 	return s, nil
 }

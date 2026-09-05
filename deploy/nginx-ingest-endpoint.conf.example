@@ -1,5 +1,5 @@
-# 中心 ingest 入口示例（部署在中心服务器的 nginx）
-# 仅对外暴露 /__gate/ingest，供其他服务器的 human-gate 节点上报访客事件。
+# 中心 ingest + policy 入口示例（部署在中心服务器的 nginx）
+# 仅对外暴露 /__gate/ingest（事件上报）与 /__gate/policy（签名策略只读下发）。
 # 认证由 human-gate 的 X-Gate-Token 负责；HTTPS 仅保证传输加密。
 #
 # 放置：作为独立 server 被 nginx 加载即可。开放对应端口的防火墙（本例 9443）。
@@ -14,11 +14,19 @@ server {
     ssl_certificate_key /path/to/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    # 节点上报原始事件
     location = /__gate/ingest {
         proxy_pass http://127.0.0.1:9200;
         proxy_set_header Host $host;
         proxy_read_timeout 15s;
         client_max_body_size 2m;
+    }
+
+    # 节点拉取签名策略（只读，human-gate 内部仍校验 X-Gate-Token）
+    location = /__gate/policy {
+        proxy_pass http://127.0.0.1:9200;
+        proxy_set_header Host $host;
+        proxy_read_timeout 15s;
     }
 
     # 其余路径一律断开，避免 admin/check 等被公网访问

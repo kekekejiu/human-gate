@@ -17,9 +17,9 @@ import (
 //   GATE_BYPASS_PREFIX  免验证路径前缀，逗号分隔，如 /api/,/static/,/media/
 
 var (
-	upstreamURL   string
-	bypassPrefix  []string
-	reverseProxy  *httputil.ReverseProxy
+	upstreamURL  string
+	bypassPrefix []string
+	reverseProxy *httputil.ReverseProxy
 )
 
 func proxyModeEnabled() bool { return upstreamURL != "" }

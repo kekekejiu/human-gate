@@ -19,11 +19,11 @@ var (
 	capt       *captchaManager
 
 	// 访客分析(可选启用)
-	geo        *geoResolver
-	store      *visitStore
-	freq       *freqCounter
-	adminUser  string
-	adminPass  string
+	geo         *geoResolver
+	store       *visitStore
+	freq        *freqCounter
+	adminUser   string
+	adminPass   string
 	analyticsOn bool
 
 	// 分布式：远程上报器(远程节点侧) / ingest 密钥(中心侧)
@@ -62,9 +62,9 @@ func main() {
 	initProxyMode()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/__gate/check", handleCheck)     // nginx auth_request 内部调用
-	mux.HandleFunc("/__gate/new", handleNew)          // 生成滑块
-	mux.HandleFunc("/__gate/verify", handleVerify)    // 校验滑块并签发 Cookie
+	mux.HandleFunc("/__gate/check", handleCheck)   // nginx auth_request 内部调用
+	mux.HandleFunc("/__gate/new", handleNew)       // 生成滑块
+	mux.HandleFunc("/__gate/verify", handleVerify) // 校验滑块并签发 Cookie
 	mux.HandleFunc("/__gate/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	})
@@ -76,7 +76,8 @@ func main() {
 	// 中心侧：接收远程节点上报(需 analytics 开启 + 配置 ingest 密钥)
 	if analyticsOn && ingestToken != "" {
 		mux.HandleFunc("/__gate/ingest", handleIngest)
-		log.Printf("ingest endpoint enabled")
+		mux.HandleFunc("/__gate/policy", handlePolicy)
+		log.Printf("ingest + policy endpoints enabled")
 	}
 	mux.HandleFunc("/__gate/", handleGateStatic) // 闸门页面(兜底，须放最后)
 
@@ -147,6 +148,15 @@ func initDistributed() {
 		insecure := os.Getenv("GATE_REPORT_INSECURE") == "1"
 		rpt = newReporter(reportURL, reportToken, insecure)
 		log.Printf("remote report enabled -> %s (insecure=%v)", reportURL, insecure)
+		policyURL := envDefault("GATE_POLICY_URL", derivePolicyURL(reportURL))
+		interval := 60 * time.Second
+		if v := os.Getenv("GATE_POLICY_INTERVAL_SEC"); v != "" {
+			if sec, err := strconv.Atoi(v); err == nil && sec >= 10 {
+				interval = time.Duration(sec) * time.Second
+			}
+		}
+		nodePolicy = newPolicySyncer(policyURL, reportToken, rpt.client, interval)
+		log.Printf("policy sync enabled -> %s interval=%s", policyURL, interval)
 	}
 	ingestToken = os.Getenv("GATE_INGEST_TOKEN")
 }
@@ -182,6 +192,11 @@ func recordVisit(r *http.Request, passed int) {
 	}
 	uri := r.Header.Get("X-Original-URI")
 	e := rawEvent{TS: time.Now().Unix(), IP: ip, UA: ua, Site: site, URI: uri, Passed: passed}
+	if decision := nodePolicy.decide(ip); decision.Matched {
+		e.PolicyVersion = decision.Version
+		e.PolicyMode = decision.Mode
+		e.PolicyAction = decision.Action
+	}
 
 	if rpt != nil {
 		rpt.send(e)
@@ -228,6 +243,9 @@ func processEvent(e rawEvent) {
 	if isStaticAsset(e.URI) {
 		return
 	}
+	if e.PolicyMode != "" {
+		store.insertPolicyHit(e)
+	}
 	p := geo.Lookup(e.IP)
 	n := freq.hit(e.IP)
 	level, tags := assessRisk(e.UA, p, n)
@@ -237,6 +255,13 @@ func processEvent(e rawEvent) {
 		ASN: p.ASN, ASNOrg: p.ASNOrg, IPType: p.IPType, ISP: p.ISP,
 		RiskLevel: level, RiskTags: strings.Join(tags, ","),
 	})
+	// 第一阶段仅生成观察候选：danger + 公网IP + 非白名单，24小时自动过期。
+	// 策略 mode 固定 observe，节点命中后只回传观察事件，不会拦截或跳转。
+	if level == "danger" && !store.policyIPAllowed(e.IP) {
+		if err := store.upsertPolicyCandidate(e.IP, e.Site, strings.Join(tags, ","), 24*time.Hour); err != nil {
+			log.Printf("policy candidate error: %v", err)
+		}
+	}
 }
 
 // handleCheck 由 nginx auth_request 调用：有合法 Cookie 返回 204，否则 401

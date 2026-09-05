@@ -82,6 +82,36 @@ func handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 	case "by_country":
 		rows, err := store.groupBy("country", hours, 20)
 		apiResult(w, rows, err)
+	case "policy_candidates":
+		rows, err := store.activePolicyCandidates()
+		apiResult(w, rows, err)
+	case "policy_hits":
+		limit := atoiDefault(r.URL.Query().Get("limit"), 200)
+		rows, err := store.recentPolicyHits(limit)
+		apiResult(w, rows, err)
+	case "policy_allow":
+		rows, err := store.policyAllows()
+		apiResult(w, rows, err)
+	case "policy_status":
+		version, mode, action, redirect, err := store.policyMeta()
+		if err != nil {
+			apiResult(w, nil, err)
+			return
+		}
+		candidates, err := store.activePolicyCandidates()
+		if err != nil {
+			apiResult(w, nil, err)
+			return
+		}
+		allows, err := store.policyAllows()
+		if err != nil {
+			apiResult(w, nil, err)
+			return
+		}
+		writeJSON(w, map[string]interface{}{
+			"version": version, "mode": mode, "action": action,
+			"redirect_url": redirect, "candidate_count": len(candidates), "allow_count": len(allows),
+		})
 	default:
 		w.WriteHeader(http.StatusNotFound)
 		writeJSON(w, map[string]string{"error": "not found"})

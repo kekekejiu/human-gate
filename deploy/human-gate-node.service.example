@@ -21,6 +21,8 @@ Environment=GATE_REPORT_URL=https://中心服务器IP:9443/__gate/ingest
 Environment=GATE_REPORT_TOKEN=改成与中心一致的强密钥
 # 中心用自签证书时置 1，跳过证书校验（防伪造仍由 token 保证）
 Environment=GATE_REPORT_INSECURE=1
+# 策略地址默认从 REPORT_URL 自动推导；每60秒同步一次签名策略
+Environment=GATE_POLICY_INTERVAL_SEC=60
 
 Restart=always
 RestartSec=3

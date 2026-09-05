@@ -12,12 +12,15 @@ import (
 // rawEvent 是一次未经画像的原始访问事件，由远程节点上报给中心。
 // 真实客户端 IP 已在远程节点侧通过 nginx real_ip 还原，中心信任该值。
 type rawEvent struct {
-	TS     int64  `json:"ts"`
-	IP     string `json:"ip"`
-	UA     string `json:"ua"`
-	Site   string `json:"site"`
-	URI    string `json:"uri"`
-	Passed int    `json:"passed"`
+	TS            int64  `json:"ts"`
+	IP            string `json:"ip"`
+	UA            string `json:"ua"`
+	Site          string `json:"site"`
+	URI           string `json:"uri"`
+	Passed        int    `json:"passed"`
+	PolicyVersion int64  `json:"policy_version,omitempty"`
+	PolicyMode    string `json:"policy_mode,omitempty"`
+	PolicyAction  string `json:"policy_action,omitempty"`
 }
 
 // reporter 把本地访问事件异步、批量地推送到中心 ingest 端点。

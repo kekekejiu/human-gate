@@ -72,6 +72,13 @@ td.ua{max-width:220px;overflow:hidden;text-overflow:ellipsis}
 <div class="panel"><h2>高频IP Top30</h2><div id="top_ip"></div></div>
 </section>
 <section class="panel">
+<h2>跨站联防（观察模式）</h2>
+<div id="policy_status" style="color:#94a3b8;margin-bottom:10px">加载中...</div>
+<div class="tablewrap"><table><thead><tr><th>候选IP</th><th>首次</th><th>最近</th><th>次数</th><th>站点</th><th>原因</th></tr></thead><tbody id="policy_candidates"></tbody></table></div>
+<h2 style="margin-top:18px">最近观察命中</h2>
+<div class="tablewrap"><table><thead><tr><th>时间</th><th>IP</th><th>站点</th><th>版本</th><th>模式</th><th>拟执行动作</th></tr></thead><tbody id="policy_hits"></tbody></table></div>
+</section>
+<section class="panel">
 <h2>最近访问 <span class="filters">
 <a href="#" data-r="" class="active">全部</a>
 <a href="#" data-r="suspect">可疑</a>
@@ -125,7 +132,25 @@ function loadRecent(){
   });
 }
 
-function loadAll(){loadSummary();loadBars('by_isp','by_isp');loadBars('by_type','by_type');loadBars('by_country','by_country');loadBars('top_ip','top_ip');loadRecent();}
+function loadPolicy(){
+  api('policy_status').then(function(s){
+    document.getElementById('policy_status').innerHTML='模式：<b>'+esc(s.mode)+'</b>　版本：'+esc(s.version)+'　候选：'+esc(s.candidate_count)+'　白名单：'+esc(s.allow_count)+'　拟执行：'+esc(s.action);
+  });
+  api('policy_candidates').then(function(rows){
+    rows=rows||[];
+    document.getElementById('policy_candidates').innerHTML=rows.map(function(v){
+      return '<tr><td>'+esc(v.ip)+'</td><td>'+fmtTime(v.first_seen)+'</td><td>'+fmtTime(v.last_seen)+'</td><td>'+v.hit_count+'</td><td>'+esc(v.sites)+'</td><td>'+esc(v.reasons)+'</td></tr>';
+    }).join('')||'<tr><td colspan="6" style="color:#64748b">暂无候选</td></tr>';
+  });
+  api('policy_hits?limit=100').then(function(rows){
+    rows=rows||[];
+    document.getElementById('policy_hits').innerHTML=rows.map(function(v){
+      return '<tr><td>'+fmtTime(v.ts)+'</td><td>'+esc(v.ip)+'</td><td>'+esc(v.site)+'</td><td>'+v.version+'</td><td>'+esc(v.mode)+'</td><td>'+esc(v.action)+'</td></tr>';
+    }).join('')||'<tr><td colspan="6" style="color:#64748b">暂无观察命中</td></tr>';
+  });
+}
+
+function loadAll(){loadSummary();loadBars('by_isp','by_isp');loadBars('by_type','by_type');loadBars('by_country','by_country');loadBars('top_ip','top_ip');loadRecent();loadPolicy();}
 
 document.querySelectorAll('.filters a').forEach(function(a){
   a.addEventListener('click',function(e){
