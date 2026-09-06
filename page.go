@@ -66,9 +66,34 @@ var fill=document.getElementById('fill');
 var tip=document.getElementById('tip');
 var statusEl=document.getElementById('status');
 var loading=document.getElementById('loading');
-var cur={id:'',tileWidth:0};
-var dragging=false,startX=0,handleX=0,maxHandle=0;
+var cur={id:'',tileWidth:0,tileHeight:0,tileY:0};
+var dragging=false,startX=0,startRatio=0,ratio=0,maxHandle=0;
+var pointerTravel=0,startPointerTravel=0;
+var activePointerId=null,submitting=false;
 
+function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+function metrics(){
+  var displayW=master.clientWidth||1;
+  var naturalW=master.naturalWidth||displayW;
+  var scale=displayW/naturalW;
+  var tileW=cur.tileWidth*scale,tileH=cur.tileHeight*scale;
+  return {displayW:displayW,naturalW:naturalW,scale:scale,tileW:tileW,tileH:tileH,
+    tileTravel:Math.max(0,displayW-tileW),answerTravel:Math.max(0,naturalW-cur.tileWidth)};
+}
+function applyPosition(){
+  var m=metrics(),trackRect=track.getBoundingClientRect();
+  var handleRect=handle.getBoundingClientRect();
+  maxHandle=Math.max(0,track.clientWidth-handle.offsetWidth);
+  pointerTravel=Math.max(0,trackRect.width-handleRect.width);
+  ratio=clamp(ratio,0,1);
+  var handleX=ratio*maxHandle;
+  handle.style.transform='translate3d('+handleX+'px,0,0)';
+  fill.style.width=(handleX+handle.offsetWidth/2)+'px';
+  tile.style.width=m.tileW+'px';
+  tile.style.height=m.tileH+'px';
+  tile.style.top=(cur.tileY*m.scale)+'px';
+  tile.style.transform='translate3d('+(ratio*m.tileTravel)+'px,0,0)';
+}
 function safeNext(){
   try{
     var p=new URLSearchParams(location.search).get('next')||'/';
@@ -77,50 +102,51 @@ function safeNext(){
   return '/';
 }
 function reset(){
-  handleX=0;dragging=false;
-  handle.style.transform='translateX(0)';
-  tile.style.transform='translateX(0)';
-  fill.style.width='0';
+  ratio=0;dragging=false;activePointerId=null;submitting=false;
   handle.classList.remove('grab');
+  tip.style.display='';
+  applyPosition();
 }
 function load(){
   loading.style.display='flex';
+  loading.textContent='加载中...';
   statusEl.textContent='';statusEl.className='status';
-  fetch('/__gate/new',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
-    cur.id=d.id;cur.tileWidth=d.tile_width;
+  fetch('/__gate/new',{cache:'no-store'}).then(function(r){
+    if(!r.ok)throw new Error('challenge '+r.status);
+    return r.json();
+  }).then(function(d){
+    cur.id=d.id;cur.tileWidth=d.tile_width;cur.tileHeight=d.tile_height;cur.tileY=d.tile_y;
     master.onload=function(){
-      var wd=master.clientWidth,nw=master.naturalWidth||wd;
-      var tdw=d.tile_width*(wd/nw);
-      tile.style.width=tdw+'px';
-      tile.style.top=d.tile_y+'px';
-      maxHandle=track.clientWidth-handle.clientWidth;
-      loading.style.display='none';reset();
+      requestAnimationFrame(function(){loading.style.display='none';reset();});
     };
     master.src=d.master;
     tile.src=d.tile;
   }).catch(function(){loading.textContent='加载失败，请刷新';});
 }
-function pointerX(e){return e.touches&&e.touches.length?e.touches[0].clientX:e.clientX}
 function start(e){
-  if(!cur.id)return;
-  dragging=true;startX=pointerX(e);handle.classList.add('grab');
+  if(!cur.id||dragging||submitting)return;
+  applyPosition();
+  dragging=true;activePointerId=e.pointerId;
+  startX=e.clientX;startRatio=ratio;startPointerTravel=pointerTravel;
+  if(handle.setPointerCapture)handle.setPointerCapture(e.pointerId);
+  handle.classList.add('grab');
   tip.style.display='none';
   e.preventDefault();
 }
 function move(e){
-  if(!dragging)return;
-  var dx=pointerX(e)-startX;
-  handleX=Math.max(0,Math.min(maxHandle,dx));
-  handle.style.transform='translateX('+handleX+'px)';
-  fill.style.width=(handleX+handle.clientWidth/2)+'px';
-  var wd=master.clientWidth,nw=master.naturalWidth||wd;
-  tile.style.transform='translateX('+(handleX*(nw/wd))+'px)';
+  if(!dragging||e.pointerId!==activePointerId)return;
+  ratio=clamp(startRatio+(e.clientX-startX)/(maxHandle||1),0,1);
+  applyPosition();
+  e.preventDefault();
 }
-function end(){
-  if(!dragging)return;
-  dragging=false;handle.classList.remove('grab');
-  var wd=master.clientWidth,nw=master.naturalWidth||wd;
-  var ansX=Math.round(handleX*(nw/wd));
+function end(e){
+  if(!dragging||e.pointerId!==activePointerId||submitting)return;
+  dragging=false;submitting=true;
+  if(handle.hasPointerCapture&&handle.hasPointerCapture(e.pointerId))handle.releasePointerCapture(e.pointerId);
+  activePointerId=null;handle.classList.remove('grab');
+  e.preventDefault();
+  var m=metrics();
+  var ansX=Math.round(clamp(ratio,0,1)*m.answerTravel);
   fetch('/__gate/verify',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({id:cur.id,x:ansX,y:0})}).then(function(r){return r.json()}).then(function(d){
     if(d.ok){
@@ -132,12 +158,24 @@ function end(){
     }
   }).catch(function(){statusEl.textContent='网络错误，请重试';statusEl.className='status err';setTimeout(load,700);});
 }
-handle.addEventListener('mousedown',start);
-window.addEventListener('mousemove',move);
-window.addEventListener('mouseup',end);
-handle.addEventListener('touchstart',start,{passive:false});
-window.addEventListener('touchmove',move,{passive:false});
-window.addEventListener('touchend',end);
+function cancel(e){
+  if(!dragging||e.pointerId!==activePointerId)return;
+  dragging=false;activePointerId=null;ratio=0;
+  handle.classList.remove('grab');
+  tip.style.display='';
+  applyPosition();
+  if(e.preventDefault)e.preventDefault();
+}
+handle.addEventListener('pointerdown',start);
+handle.addEventListener('pointermove',move);
+handle.addEventListener('pointerup',end);
+handle.addEventListener('pointercancel',cancel);
+handle.addEventListener('lostpointercapture',cancel);
+window.addEventListener('resize',function(){if(cur.id)requestAnimationFrame(applyPosition)});
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize',function(){if(cur.id)requestAnimationFrame(applyPosition)});
+}
+window.addEventListener('orientationchange',function(){setTimeout(applyPosition,150)});
 load();
 })();
 </script>
