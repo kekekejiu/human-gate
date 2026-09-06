@@ -135,7 +135,7 @@ function start(e){
 }
 function move(e){
   if(!dragging||e.pointerId!==activePointerId)return;
-  ratio=clamp(startRatio+(e.clientX-startX)/(maxHandle||1),0,1);
+  ratio=clamp(startRatio+(e.clientX-startX)/(startPointerTravel||1),0,1);
   applyPosition();
   e.preventDefault();
 }
