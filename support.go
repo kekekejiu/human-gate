@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"html"
 	"log"
 	"net/url"
@@ -13,6 +14,8 @@ func initSupport() {
 	gateSupportURL = strings.TrimSpace(os.Getenv("GATE_SUPPORT_URL"))
 	gateSupportText = envDefault("GATE_SUPPORT_TEXT", "验证遇到问题？联系客服")
 	gateSupportScriptURL = validHTTPURL(os.Getenv("GATE_SUPPORT_SCRIPT_URL"))
+	gateChatwootBaseURL = strings.TrimRight(validHTTPURL(os.Getenv("GATE_CHATWOOT_BASE_URL")), "/")
+	gateChatwootToken = strings.TrimSpace(os.Getenv("GATE_CHATWOOT_TOKEN"))
 
 	if path := strings.TrimSpace(os.Getenv("GATE_SUPPORT_HTML_FILE")); path != "" {
 		if b, err := os.ReadFile(path); err == nil {
@@ -28,11 +31,13 @@ func initSupport() {
 		}
 	}
 
+	chatwootReady := gateChatwootBaseURL != "" && gateChatwootToken != ""
 	enableRaw := strings.TrimSpace(os.Getenv("GATE_SUPPORT_ENABLE"))
 	gateSupportEnabled = !strings.EqualFold(enableRaw, "off") &&
-		(enableRaw != "" || gateSupportURL != "" || gateSupportScriptURL != "" || gateSupportHTML != "")
+		(enableRaw != "" || gateSupportURL != "" || gateSupportScriptURL != "" || gateSupportHTML != "" || chatwootReady)
 	if gateSupportEnabled {
-		log.Printf("gate support enabled: static=%v script=%v custom=%v", gateSupportURL != "", gateSupportScriptURL != "", gateSupportHTML != "")
+		log.Printf("gate support enabled: chatwoot=%v static=%v script=%v custom=%v",
+			chatwootReady, gateSupportURL != "", gateSupportScriptURL != "", gateSupportHTML != "")
 	}
 }
 
@@ -62,9 +67,30 @@ func supportMarkup() string {
 	return `<div class="support">` + contact + `<a href="javascript:location.reload()">重新加载验证</a><small>如客服组件未加载，请截图故障码 HG-VERIFY-01</small></div>`
 }
 
+// chatwootEmbedMarkup 生成 Chatwoot 挂件代码。
+// 地址与 token 来自环境变量，便于各节点统一配置、无需重新编译：
+//   GATE_CHATWOOT_BASE_URL   例如 https://103.118.41.128:11186
+//   GATE_CHATWOOT_TOKEN      Chatwoot 网站入口 websiteToken
+// 两者任一为空则返回空串（视为未启用 Chatwoot）。
+func chatwootEmbedMarkup() string {
+	if gateChatwootBaseURL == "" || gateChatwootToken == "" {
+		return ""
+	}
+	base, _ := json.Marshal(gateChatwootBaseURL)
+	token, _ := json.Marshal(gateChatwootToken)
+	return `<script>window.chatwootSettings={locale:"zh_CN",position:"right",type:"standard",hideMessageBubble:false};(function(d,t){var BASE_URL=` +
+		string(base) + `;var g=d.createElement(t),s=d.getElementsByTagName(t)[0];g.src=BASE_URL+"/packs/js/sdk.js";g.async=true;s.parentNode.insertBefore(g,s);g.onload=function(){window.chatwootSDK.run({websiteToken:` +
+		string(token) + `,baseUrl:BASE_URL});};})(document,"script");window.addEventListener("chatwoot:ready",function(){var query=new URLSearchParams(window.location.search);window.$chatwoot.setCustomAttributes({current_page_url:window.location.href,current_page_title:document.title,landing_referrer:document.referrer||"直接访问",user_agent:navigator.userAgent,utm_source:query.get("utm_source")||"",utm_medium:query.get("utm_medium")||"",utm_campaign:query.get("utm_campaign")||""});});</script>`
+}
+
 func supportEmbedMarkup() string {
 	if !gateSupportEnabled {
 		return ""
+	}
+	// Chatwoot 为统一客服入口，配置齐全时优先使用，不再叠加其它客服脚本，
+	// 避免多个挂件同时出现在右下角。
+	if embed := chatwootEmbedMarkup(); embed != "" {
+		return embed
 	}
 	out := gateSupportHTML
 	if gateSupportScriptURL != "" {

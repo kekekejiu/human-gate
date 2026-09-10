@@ -39,6 +39,8 @@ var (
 	gateSupportText      string
 	gateSupportScriptURL string
 	gateSupportHTML      string
+	gateChatwootBaseURL  string
+	gateChatwootToken    string
 )
 
 func main() {
@@ -260,7 +262,8 @@ func processEvent(e rawEvent) {
 	store.insert(visitRow{
 		TS: e.TS, IP: e.IP, UA: e.UA, Site: e.Site, URI: e.URI, Passed: e.Passed,
 		Country: p.Country, Province: p.Province, City: p.City,
-		ASN: p.ASN, ASNOrg: p.ASNOrg, IPType: p.IPType, ISP: p.ISP,
+		ASN: p.ASN, ASNOrg: p.ASNOrg, IPType: p.IPType,
+		CloudProvider: p.CloudProvider, ISP: p.ISP,
 		RiskLevel: level, RiskTags: strings.Join(tags, ","),
 	})
 	// 第一阶段仅生成观察候选：danger + 公网IP + 非白名单，24小时自动过期。
@@ -350,7 +353,7 @@ func handleGateStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob: https: http:; style-src 'self' 'unsafe-inline' https: http:; script-src 'self' 'unsafe-inline' https: http:; connect-src 'self' https: http: wss: ws:; frame-src https: http:; child-src https: http: blob:; worker-src blob:; media-src https: http: blob:; font-src 'self' data: https: http:")
-		w.Write([]byte(renderGatePage()))
+		w.Write([]byte(renderGatePageForRequest(r)))
 		return
 	}
 	http.NotFound(w, r)

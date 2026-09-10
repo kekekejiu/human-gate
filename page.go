@@ -1,10 +1,19 @@
 package main
 
-import "strings"
+import (
+	"net/http"
+	"strings"
+)
 
 func renderGatePage() string {
 	page := strings.ReplaceAll(gatePageHTML, "__SUPPORT_MARKUP__", supportMarkup())
 	return strings.ReplaceAll(page, "__SUPPORT_EMBED__", supportEmbedMarkup())
+}
+
+// renderGatePageForRequest 保留请求参数以兼容既有调用点。
+// 客服组件已统一为 Chatwoot，由环境变量配置，无需再按站点分流。
+func renderGatePageForRequest(_ *http.Request) string {
+	return renderGatePage()
 }
 
 const gatePageHTML = `<!doctype html>
